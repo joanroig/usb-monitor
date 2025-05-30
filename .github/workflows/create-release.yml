@@ -1,0 +1,77 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Select the version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Bump version (if requested)
+        if: ${{ github.event.inputs.version_bump != 'none' }}
+        id: bump_version
+        run: |
+          $bumpType = '${{ github.event.inputs.version_bump }}'
+          # Run your PowerShell bump script that updates version.txt and outputs new version
+          $newVersion = pwsh -File .\bump_version.ps1 -BumpType $bumpType
+          Write-Host "New version: $newVersion"
+          # Commit version.txt if changed
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add version.txt
+          git commit -m "Bump version to $newVersion"
+          git push
+          echo "VERSION=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii
+        shell: pwsh
+
+      - name: Read version (if no bump)
+        if: ${{ github.event.inputs.version_bump == 'none' }}
+        id: read_version
+        run: |
+          $version = Get-Content version.txt
+          Write-Host "Current version: $version"
+          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii
+        shell: pwsh
+
+      - name: Run bundle.ps1 to build exe
+        run: pwsh -ExecutionPolicy Bypass -File .\bundle.ps1
+        shell: pwsh
+
+      - name: Zip executable
+        run: |
+          $version = '${{ steps.bump_version.outputs.VERSION }}'
+          if (-not $version) {
+            $version = '${{ steps.read_version.outputs.VERSION }}'
+          }
+          $zipName = "usb-monitor-v$version.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName }
+          Compress-Archive -Path .\dist\USBMonitor.exe -DestinationPath $zipName
+          Write-Host "Created zip: $zipName"
+        shell: pwsh
+
+      - name: Create GitHub Release and upload zip
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}
+          name: Release v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}
+          files: usb-monitor-v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
