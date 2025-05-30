@@ -48,6 +48,10 @@ jobs:
           echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii
         shell: pwsh
 
+      - name: Install ps2exe module
+        run: pwsh -Command "Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber"
+        shell: pwsh
+        
       - name: Run bundle.ps1 to build exe
         run: pwsh -ExecutionPolicy Bypass -File .\bundle.ps1
         shell: pwsh
