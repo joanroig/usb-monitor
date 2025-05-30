@@ -12,6 +12,18 @@
   Lightweight USB device activity tracker with tray notifications and logging for Windows.
 </p>
 
+<p align="center">
+  <a href="https://github.com/joanroig/usb-monitor/releases"><img src="https://img.shields.io/github/v/release/joanroig/usb-monitor?&include_prereleases&label=version" /></a>
+  <a href="https://github.com/joanroig/usb-monitor/actions"><img alt="GitHub Actions Status" src="https://img.shields.io/github/actions/workflow/status/joanroig/usb-monitor/create-release.yml?branch=main"></a>
+  <a href="https://github.com/joanroig/usb-monitor/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/joanroig/usb-monitor?color=blue"></a>
+  <a href="https://github.com/joanroig/usb-monitor/issues"><img src="https://img.shields.io/github/issues/joanroig/usb-monitor"></a>
+  <a href="https://github.com/joanroig/usb-monitor/stargazers"><img src="https://img.shields.io/github/stars/joanroig/usb-monitor"></a>
+</p>
+
+<p align="center">
+  <img alt="Example" src="docs/example.png">
+</p>
+
 ## Features
 
 - Real-time detection and logging of USB device connections and disconnections on Windows.
