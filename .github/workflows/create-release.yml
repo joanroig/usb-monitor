@@ -39,8 +39,7 @@ jobs:
           echo "VERSION=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii
         shell: pwsh
 
-      - name: Read version (if no bump)
-        if: ${{ github.event.inputs.version_bump == 'none' }}
+      - name: Read version
         id: read_version
         run: |
           $version = Get-Content version.txt
