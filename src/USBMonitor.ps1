@@ -1,31 +1,20 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Web.Extensions
 
 # Get version from assembly metadata
 function Get-Version {
     try {
         $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
-        # If running as script, $exePath will be powershell.exe or pwsh.exe
         $exeName = [System.IO.Path]::GetFileName($exePath).ToLower()
-
-        if ($exeName -in @("powershell.exe", "pwsh.exe")) {
-            # Running as a script - no version to show
-            return "debug"
-        }
-
+        if ($exeName -in @("powershell.exe", "pwsh.exe")) { return "debug" }
         $fileVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exePath)
         $version = $fileVersionInfo.ProductVersion
-        # If no version info present, return empty string
         if ([string]::IsNullOrWhiteSpace($version)) { return "" }
-
         return "v$version"
     }
-    catch {
-        # Any errors fallback to empty string to avoid showing "Unknown"
-        return ""
-    }
+    catch { return "" }
 }
-
 
 $scriptVersion = Get-Version
 
@@ -49,7 +38,28 @@ if (-not $createdNew) {
 # Setup paths
 $logPath = "$([Environment]::GetFolderPath('ApplicationData'))\USBMonitor"
 $logFile = "$logPath\usb_log.txt"
+$settingsFile = "$logPath\settings.json"
+
 if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
+
+# Load or initialize settings
+if (Test-Path $settingsFile) {
+    $json = Get-Content $settingsFile -Raw
+    $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
+    $global:notificationsEnabled = $settings["notificationsEnabled"]
+} else {
+    $global:notificationsEnabled = $true
+    $defaultSettings = @{ notificationsEnabled = $true }
+    $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($defaultSettings)
+    $json | Out-File -FilePath $settingsFile -Encoding UTF8
+}
+
+# Save settings
+function Save-Settings {
+    $settings = @{ notificationsEnabled = $global:notificationsEnabled }
+    $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($settings)
+    $json | Out-File -FilePath $settingsFile -Encoding UTF8
+}
 
 # Logging function
 function Log-USBEvent {
@@ -99,6 +109,20 @@ $showLogsItem.Add_Click({
 })
 $contextMenu.Items.Add($showLogsItem) | Out-Null
 
+# Toggle notifications menu item
+$notifyToggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
+function Update-NotifyMenuText {
+    $notifyToggleItem.Text = if ($global:notificationsEnabled) { "Disable Notifications" } else { "Enable Notifications" }
+}
+Update-NotifyMenuText
+$notifyToggleItem.Image = [System.Drawing.SystemIcons]::Shield.ToBitmap()
+$notifyToggleItem.Add_Click({
+    $global:notificationsEnabled = -not $global:notificationsEnabled
+    Update-NotifyMenuText
+    Save-Settings
+})
+$contextMenu.Items.Add($notifyToggleItem) | Out-Null
+
 # Exit menu item
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
 $exitItem.Text = "Exit"
@@ -125,18 +149,21 @@ $existingDevices = @{}
 # Initial device snapshot
 foreach ($dev in Get-USBDevices) { $existingDevices[$dev] = $true }
 
-# Notification function
-function Show-Notification {
-    param([string]$title, [string]$message)
-    $trayIcon.BalloonTipIcon = "Info"
-    $trayIcon.BalloonTipTitle = $title
-    $trayIcon.BalloonTipText = $message
-    $trayIcon.ShowBalloonTip(1000)
-}
-
 # Start monitoring in a runspace (separate thread)
 $scriptBlock = {
-    param($existingDevices, $trayIcon, $logFile)
+    param($existingDevices, $trayIcon, $logFile, $settingsFile)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Web.Extensions
+
+    function Load-NotificationSetting {
+        if (Test-Path $settingsFile) {
+            $json = Get-Content $settingsFile -Raw
+            $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
+            return $settings["notificationsEnabled"]
+        }
+        return $true
+    }
 
     while ($true) {
         $currentDevices = @{}
@@ -146,27 +173,31 @@ $scriptBlock = {
             $currentDevices[$key] = $true
         }
 
-        # Check for new devices
+        $notify = Load-NotificationSetting
+
         foreach ($dev in $currentDevices.Keys) {
             if (-not $existingDevices.ContainsKey($dev)) {
                 $name = ($dev -split '\|')[1]
-                $trayIcon.BalloonTipIcon = "Info"
-                $trayIcon.BalloonTipTitle = "USB Device Connected"
-                $trayIcon.BalloonTipText = $name
-                $trayIcon.ShowBalloonTip(1000)
+                if ($notify) {
+                    $trayIcon.BalloonTipIcon = "Info"
+                    $trayIcon.BalloonTipTitle = "USB Device Connected"
+                    $trayIcon.BalloonTipText = $name
+                    $trayIcon.ShowBalloonTip(1000)
+                }
                 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
                 "$timestamp`tCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
             }
         }
 
-        # Check for removed devices
         foreach ($dev in $existingDevices.Keys) {
             if (-not $currentDevices.ContainsKey($dev)) {
                 $name = ($dev -split '\|')[1]
-                $trayIcon.BalloonTipIcon = "Info"
-                $trayIcon.BalloonTipTitle = "USB Device Disconnected"
-                $trayIcon.BalloonTipText = $name
-                $trayIcon.ShowBalloonTip(1000)
+                if ($notify) {
+                    $trayIcon.BalloonTipIcon = "Info"
+                    $trayIcon.BalloonTipTitle = "USB Device Disconnected"
+                    $trayIcon.BalloonTipText = $name
+                    $trayIcon.ShowBalloonTip(1000)
+                }
                 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
                 "$timestamp`tDISCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
             }
@@ -187,7 +218,7 @@ $runspace.Open()
 
 $psInstance = [powershell]::Create()
 $psInstance.Runspace = $runspace
-$psInstance.AddScript($scriptBlock).AddArgument($existingDevices).AddArgument($trayIcon).AddArgument($logFile) | Out-Null
+$psInstance.AddScript($scriptBlock).AddArgument($existingDevices).AddArgument($trayIcon).AddArgument($logFile).AddArgument($settingsFile) | Out-Null
 $psInstance.BeginInvoke() | Out-Null
 
 # Start the Windows Forms message loop to keep tray icon responsive
