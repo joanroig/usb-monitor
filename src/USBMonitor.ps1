@@ -12,8 +12,7 @@ function Get-Version {
         $version = $fileVersionInfo.ProductVersion
         if ([string]::IsNullOrWhiteSpace($version)) { return "" }
         return "v$version"
-    }
-    catch { return "" }
+    } catch { return "" }
 }
 
 $scriptVersion = Get-Version
@@ -49,23 +48,26 @@ $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 
 # Load or initialize settings
 if (Test-Path $settingsFile) {
-    $json = Get-Content $settingsFile -Raw
-    $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
-    $global:notificationsEnabled = $settings["notificationsEnabled"]
-    $global:startWithWindows = $settings["startWithWindows"]
+    $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject((Get-Content $settingsFile -Raw))
 } else {
-    $global:notificationsEnabled = $true
-    $global:startWithWindows = $false
-    $defaultSettings = @{ notificationsEnabled = $true; startWithWindows = $false }
-    $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($defaultSettings)
-    $json | Out-File -FilePath $settingsFile -Encoding UTF8
+    $settings = @{
+        notificationsEnabled = $true
+        startWithWindows     = $true
+        pollingRateMs        = 1000
+    }
+    ([System.Web.Script.Serialization.JavaScriptSerializer]::new()).Serialize($settings) | Out-File $settingsFile -Encoding UTF8
 }
+$global:notificationsEnabled = $settings["notificationsEnabled"]
+$global:startWithWindows     = $settings["startWithWindows"]
+$global:pollingRateMs        = $settings["pollingRateMs"]
+
 
 # Save settings
 function Save-Settings {
     $settings = @{
         notificationsEnabled = $global:notificationsEnabled
-        startWithWindows = $global:startWithWindows
+        startWithWindows     = $global:startWithWindows
+        pollingRateMs        = $global:pollingRateMs
     }
     $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($settings)
     $json | Out-File -FilePath $settingsFile -Encoding UTF8
@@ -93,7 +95,6 @@ Log-USBEvent "Application started."
 
 # Create tray icon and context menu
 $trayIcon = New-Object System.Windows.Forms.NotifyIcon
-
 try {
     # Extract icon from the executable itself (embedded icon)
     $trayIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
@@ -134,6 +135,36 @@ $notifyToggleItem.Add_Click({
 })
 $contextMenu.Items.Add($notifyToggleItem) | Out-Null
 
+# Polling rate configuration
+$pollingRateItem = New-Object System.Windows.Forms.ToolStripMenuItem
+
+function Update-PollingRateMenuText {
+    $pollingRateItem.Text = "Polling Rate: $($global:pollingRateMs) ms"
+}
+Update-PollingRateMenuText
+$pollingRateItem.Image = [System.Drawing.SystemIcons]::Information.ToBitmap()
+$pollingRateItem.DropDownItems.Clear()
+
+foreach ($rate in @(500, 1000, 2000, 5000)) {
+    $item = New-Object System.Windows.Forms.ToolStripMenuItem
+    $item.Text = "$rate ms"
+    $item.Checked = ($rate -eq $global:pollingRateMs)
+
+    $item.Add_Click(
+        [System.EventHandler]{
+            param($sender, $args)
+            $global:pollingRateMs = $rate
+            foreach ($i in $pollingRateItem.DropDownItems) { $i.Checked = $false }
+            $sender.Checked = $true
+            Update-PollingRateMenuText
+            Save-Settings
+        }.GetNewClosure()
+    )
+
+    $pollingRateItem.DropDownItems.Add($item) | Out-Null
+}
+$contextMenu.Items.Add($pollingRateItem) | Out-Null
+
 # Toggle startup with Windows menu item
 $startupToggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
 function Update-StartupMenuText {
@@ -168,7 +199,7 @@ function Get-USBDevices {
         ForEach-Object { $_.InstanceId, $_.FriendlyName -join '|' }
 }
 
-# Variables for device tracking
+# Variable for device tracking
 $existingDevices = @{}
 
 # Initial device snapshot
@@ -181,24 +212,24 @@ $scriptBlock = {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Web.Extensions
 
-    function Load-NotificationSetting {
+    function Load-Settings {
         if (Test-Path $settingsFile) {
             $json = Get-Content $settingsFile -Raw
-            $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
-            return $settings["notificationsEnabled"]
+            return [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
         }
-        return $true
+        return @{ notificationsEnabled = $true; pollingRateMs = 1000 }
     }
 
     while ($true) {
+        $settings = Load-Settings
+        $notify = $settings["notificationsEnabled"]
+        $pollingRateMs = $settings["pollingRateMs"]
+
         $currentDevices = @{}
-        $devices = Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB*' }
-        foreach ($dev in $devices) {
-            $key = "$($dev.InstanceId)|$($dev.FriendlyName)"
+        Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB*' } | ForEach-Object {
+            $key = "$($_.InstanceId)|$($_.FriendlyName)"
             $currentDevices[$key] = $true
         }
-
-        $notify = Load-NotificationSetting
 
         foreach ($dev in $currentDevices.Keys) {
             if (-not $existingDevices.ContainsKey($dev)) {
@@ -209,8 +240,7 @@ $scriptBlock = {
                     $trayIcon.BalloonTipText = $name
                     $trayIcon.ShowBalloonTip(1000)
                 }
-                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                "$timestamp`tCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
+                "$((Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))`tCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
             }
         }
 
@@ -223,15 +253,12 @@ $scriptBlock = {
                     $trayIcon.BalloonTipText = $name
                     $trayIcon.ShowBalloonTip(1000)
                 }
-                $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                "$timestamp`tDISCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
+                "$((Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))`tDISCONNECTED: $name" | Out-File -FilePath $logFile -Append -Encoding UTF8
             }
         }
 
-        $existingDevices.Clear()
-        $currentDevices.Keys | ForEach-Object { $existingDevices[$_] = $true }
-
-        Start-Sleep -Milliseconds 500
+        $existingDevices = $currentDevices
+        Start-Sleep -Milliseconds $pollingRateMs
     }
 }
 
