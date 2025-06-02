@@ -9,7 +9,7 @@
 </h1>
 
 <p align="center">
-  Lightweight USB activity tracker for Windows, with system tray integration and logging.
+  Monitor USB device activity on Windows - with tray notifications, logging, and auto-start.
 </p>
 
 <p align="center">
@@ -33,19 +33,26 @@
   </a>
 </p>
 
-<p align="center">
-  <img alt="Example" src="docs/example.png">
-    <em>Example of a notification, and some contents of the log file</em>
+<p align=center>
+  <img src="docs/tray.png" alt="Tray icon" width="270px"/>
+  <br>
+  <i>Tray icon with the available options</i>
+  <br>
+  <br> 
+  <img src="docs/example.png" alt="Example of a notification" width="800px"/>
+  <br>
+  <i>Example of a notification and some contents of the log file</i>
 </p>
 
 ## Features
 
 - ⚡ Real-time monitoring of USB device connections and disconnections
-- 💬 User-friendly balloon notifications displaying device names
+- 💬 Optional balloon notifications displaying device names
 - 🔄 Optional automatic startup with Windows for continuous monitoring
+- 🕒 Customizable polling rate interval
 - 🖱️ Tray icon menu providing quick access to all functions
 - 🗃️ Comprehensive log file saved at `%AppData%\USBMonitor\usb_log.txt`
-- 💾 Persistent preferences stored in JSON
+- 💾 Persistent preferences stored in JSON at `%AppData%\USBMonitor\settings.json`
 - 🧠 Single-instance enforcement to prevent multiple runs
 - 🧩 No external dependencies, pure PowerShell
 
@@ -54,12 +61,12 @@
 ### Installation
 
 1. Download the latest version from the [Releases page](https://github.com/joanroig/usb-monitor/releases).
-2. Unzip the `.exe` file and double-click it to run. The app sits in your system tray.
+2. Extract the `.exe` file and double-click it to launch the app. The application runs in the background and places an icon in the system tray to manage it.
 
 ### Usage
 
-- Right-click the tray icon to open the log file, configure the settings or quit the app.
-- You’ll receive a balloon notification for each USB connection or disconnection if the notifications are activated. All activity is always stored in the log file.
+1. Right-click the tray icon to open the log file, configure the settings or quit the app.
+2. If enabled, balloon notifications will appear for each USB device connection or disconnection. All activity is always stored in the log file.
 
 ## Development
 
