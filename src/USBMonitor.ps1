@@ -39,24 +39,34 @@ if (-not $createdNew) {
 $logPath = "$([Environment]::GetFolderPath('ApplicationData'))\USBMonitor"
 $logFile = "$logPath\usb_log.txt"
 $settingsFile = "$logPath\settings.json"
+$startupRegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$startupName = "USBMonitor"
 
 if (!(Test-Path $logPath)) { New-Item -ItemType Directory -Path $logPath -Force | Out-Null }
+
+# Get running executable path (this works whether running as script or bundled exe)
+$exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 
 # Load or initialize settings
 if (Test-Path $settingsFile) {
     $json = Get-Content $settingsFile -Raw
     $settings = [System.Web.Script.Serialization.JavaScriptSerializer]::new().DeserializeObject($json)
     $global:notificationsEnabled = $settings["notificationsEnabled"]
+    $global:startWithWindows = $settings["startWithWindows"]
 } else {
     $global:notificationsEnabled = $true
-    $defaultSettings = @{ notificationsEnabled = $true }
+    $global:startWithWindows = $false
+    $defaultSettings = @{ notificationsEnabled = $true; startWithWindows = $false }
     $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($defaultSettings)
     $json | Out-File -FilePath $settingsFile -Encoding UTF8
 }
 
 # Save settings
 function Save-Settings {
-    $settings = @{ notificationsEnabled = $global:notificationsEnabled }
+    $settings = @{
+        notificationsEnabled = $global:notificationsEnabled
+        startWithWindows = $global:startWithWindows
+    }
     $json = (New-Object System.Web.Script.Serialization.JavaScriptSerializer).Serialize($settings)
     $json | Out-File -FilePath $settingsFile -Encoding UTF8
 }
@@ -68,11 +78,18 @@ function Log-USBEvent {
     "$timestamp`t$message" | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
 
-# Log application start
-Log-USBEvent "Application started."
+# Function to update the startup entry in the registry
+function Update-StartupEntry {
+    if ($global:startWithWindows) {
+        Set-ItemProperty -Path $startupRegPath -Name $startupName -Value "`"$exePath`"" -Force
+    } else {
+        Remove-ItemProperty -Path $startupRegPath -Name $startupName -ErrorAction SilentlyContinue
+    }
+}
 
-# Get running executable path (this works whether running as script or bundled exe)
-$exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+# Add app in the registry and log application start
+Update-StartupEntry
+Log-USBEvent "Application started."
 
 # Create tray icon and context menu
 $trayIcon = New-Object System.Windows.Forms.NotifyIcon
@@ -81,10 +98,8 @@ try {
     # Extract icon from the executable itself (embedded icon)
     $trayIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
 } catch {
-    # Fallback to default system icon if extraction fails
     $trayIcon.Icon = [System.Drawing.SystemIcons]::Information
 }
-
 $trayIcon.Text = "USB Monitor"
 $trayIcon.Visible = $true
 
@@ -94,28 +109,24 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $versionItem = New-Object System.Windows.Forms.ToolStripMenuItem
 $versionItem.Text = "USB Monitor $scriptVersion"
 $versionItem.ToolTipText = "Click to open GitHub repository"
-$versionItem.Image = [System.Drawing.SystemIcons]::Information.ToBitmap()
-$versionItem.Add_Click({
-    Start-Process "https://github.com/joanroig/usb-monitor"
-})
+$versionItem.Image = [System.Drawing.SystemIcons]::Question.ToBitmap()
+$versionItem.Add_Click({ Start-Process "https://github.com/joanroig/usb-monitor" })
 $contextMenu.Items.Add($versionItem) | Out-Null
 
 # Show Logs menu item
 $showLogsItem = New-Object System.Windows.Forms.ToolStripMenuItem
 $showLogsItem.Text = "Show Logs"
 $showLogsItem.Image = [System.Drawing.SystemIcons]::Application.ToBitmap()
-$showLogsItem.Add_Click({
-    Start-Process "notepad.exe" -ArgumentList "`"$logFile`""
-})
+$showLogsItem.Add_Click({ Start-Process "notepad.exe" -ArgumentList "`"$logFile`"" })
 $contextMenu.Items.Add($showLogsItem) | Out-Null
 
 # Toggle notifications menu item
 $notifyToggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
 function Update-NotifyMenuText {
-    $notifyToggleItem.Text = if ($global:notificationsEnabled) { "Disable Notifications" } else { "Enable Notifications" }
+    $notifyToggleItem.Text = if ($global:notificationsEnabled) { "Notifications: ENABLED" } else { "Notifications: DISABLED" }
 }
 Update-NotifyMenuText
-$notifyToggleItem.Image = [System.Drawing.SystemIcons]::Shield.ToBitmap()
+$notifyToggleItem.Image = [System.Drawing.SystemIcons]::Information.ToBitmap()
 $notifyToggleItem.Add_Click({
     $global:notificationsEnabled = -not $global:notificationsEnabled
     Update-NotifyMenuText
@@ -123,7 +134,21 @@ $notifyToggleItem.Add_Click({
 })
 $contextMenu.Items.Add($notifyToggleItem) | Out-Null
 
-# Exit menu item
+# Toggle startup with Windows menu item
+$startupToggleItem = New-Object System.Windows.Forms.ToolStripMenuItem
+function Update-StartupMenuText {
+    $startupToggleItem.Text = if ($global:startWithWindows) { "Start with Windows: ENABLED" } else { "Start with Windows: DISABLED" }
+}
+Update-StartupMenuText
+$startupToggleItem.Image = [System.Drawing.SystemIcons]::Shield.ToBitmap()
+$startupToggleItem.Add_Click({
+    $global:startWithWindows = -not $global:startWithWindows
+    Update-StartupMenuText
+    Update-StartupEntry
+    Save-Settings
+})
+$contextMenu.Items.Add($startupToggleItem) | Out-Null
+
 $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
 $exitItem.Text = "Exit"
 $exitItem.Image = [System.Drawing.SystemIcons]::Error.ToBitmap()
@@ -235,3 +260,4 @@ $trayIcon.Dispose()
 
 # Release mutex at exit
 if ($mutex.WaitOne(0)) { $mutex.ReleaseMutex() }
+$mutex.Dispose()
