@@ -67,9 +67,9 @@ jobs:
       - name: Create GitHub Release and upload zip
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}
-          name: Release v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}
-          files: usb-monitor-v${{ steps.bump_version.outputs.VERSION || steps.read_version.outputs.VERSION }}.zip
+          tag_name: v${{ steps.read_version.outputs.VERSION }}
+          name: Release v${{ steps.read_version.outputs.VERSION }}
+          files: usb-monitor-v${{ steps.read_version.outputs.VERSION }}.zip
           draft: false
           prerelease: false
           generate_release_notes: true
