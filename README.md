@@ -44,7 +44,14 @@
   <i>Example of a notification and some contents of the log file</i>
 </p>
 
-## Features
+## 🔌 Overview
+
+USB Monitor is a lightweight, portable PowerShell utility designed to track USB device events on Windows with no external dependencies. It runs in the system tray and logs all activity to a file for future reference. It’s ideal for:
+
+- Identifying which USB devices connect and disconnect over time
+- Diagnosing intermittent USB issues
+
+### Features
 
 - ⚡ Real-time monitoring of USB device connections and disconnections
 - 💬 Optional balloon notifications displaying device names
@@ -56,7 +63,7 @@
 - 🧠 Single-instance enforcement to prevent multiple runs
 - 🧩 No external dependencies, pure PowerShell
 
-## How to use
+## 📋 How to use
 
 ### Installation
 
@@ -68,7 +75,7 @@
 1. Right-click the tray icon to open the log file, configure the settings or quit the app.
 2. If enabled, balloon notifications will appear for each USB device connection or disconnection. All activity is always stored in the log file.
 
-## Development
+## 🛠️ Development Setup
 
 ### Prerequisites
 
@@ -114,10 +121,10 @@ To use these, open VSCode in the project directory, then open the Run and Debug 
 
 Releases are fully automated via GitHub Actions. Check out the workflow defined in [`create-release.yml`](.github/workflows/create-release.yml), which builds and publishes new executables on the GitHub releases page.
 
-## Credits
+## 🙏 Credits
 
 Icon from <a href="https://www.flaticon.com/free-icons/usb-flash-drive" title="usb-flash-drive icons">Flaticon</a> by Freepik.
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
